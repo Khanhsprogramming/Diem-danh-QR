@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Điểm danh QR</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
+  <style>
+    body {
+      font-family: Arial;
+      text-align: center;
+      background: #f2f4f7;
+      padding: 20px;
+    }
+    #reader {
+      max-width: 360px;
+      margin: auto;
+    }
+    #status {
+      margin-top: 15px;
+      font-size: 17px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+<h2>ĐIỂM DANH HỌC SINH BẰNG QR</h2>
+<p>Giáo viên quét mã QR học sinh</p>
+
+<div id="reader"></div>
+<div id="status"></div>
+
+<script>
+const API_URL = "https://script.google.com/macros/s/AKfycbzmfYk_rvrVEj-LuWtPJfsYX06Yvu-q5xv3i2BWGTm76bDnOQ7Enh0IbKm4fqv_5Tyt/exec"; // dán link Apps Script
+
+function onScanSuccess(decodedText) {
+  const data = decodedText.split("|");
+
+  if (data.length < 3) {
+    document.getElementById("status").innerText =
+      "❌ Mã QR không hợp lệ";
+    return;
+  }
+
+  const maHS = data[0];
+  const tenHS = data[1];
+  const lop = data[2];
+
+  const today = new Date().toISOString().slice(0, 10);
+  const time = new Date().toLocaleTimeString();
+
+  fetch(API_URL, {
+    method: "POST",
+    body: JSON.stringify({
+      maHS: maHS,
+      tenHS: tenHS,
+      lop: lop,
+      ngay: today,
+      gio: time
+    })
+  })
+  .then(res => res.json())
+  .then(result => {
+    if (result.status === "exists") {
+      document.getElementById("status").innerText =
+        "⚠️ Học sinh đã điểm danh hôm nay";
+    } else {
+      document.getElementById("status").innerText =
+        "✅ Điểm danh thành công: " + tenHS;
+    }
+  });
+
+  html5QrCode.stop();
+}
+
+// Khởi động camera sau
+const html5QrCode = new Html5Qrcode("reader");
+
+Html5Qrcode.getCameras().then(cameras => {
+  if (cameras.length) {
+    html5QrCode.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: 250 },
+      onScanSuccess
+    );
+  }
+});
+</script>
+
+</body>
+</html>

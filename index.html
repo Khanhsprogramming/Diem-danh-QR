@@ -42,19 +42,6 @@ function getTodayKey() {
   return "attendance_" + new Date().toISOString().slice(0, 10);
 }
 
-// Kiểm tra xem học sinh đã scan chưa
-function hasScannedToday(maHS) {
-  const key = getTodayKey();
-  const list = JSON.parse(localStorage.getItem(key)) || [];
-  return list.includes(maHS);
-}
-function saveScanned(maHS) {
-  const key = getTodayKey();
-  const list = JSON.parse(localStorage.getItem(key)) || [];
-  list.push(maHS);
-  localStorage.setItem(key, JSON.stringify(list));
-}
-
 function onScanSuccess(decodedText) {
   const data = decodedText.split("|");
 
@@ -134,6 +121,7 @@ Html5Qrcode.getCameras().then(cameras => {
 
 </body>
 </html>
+
 
 
 

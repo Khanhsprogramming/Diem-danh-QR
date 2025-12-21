@@ -34,7 +34,9 @@
 <div id="status"></div>
 
 <script>
-const API_URL = "https://script.google.com/macros/s/AKfycbzmfYk_rvrVEj-LuWtPJfsYX06Yvu-q5xv3i2BWGTm76bDnOQ7Enh0IbKm4fqv_5Tyt/exec"; // dán link Apps Script
+const START_TIME = "07:00";
+
+const API_URL = "https://script.google.com/macros/s/AKfycbzrXPygtNfBTGNwrPyvq-2D-xmcYBVzSjTUx6vlvdaWlE5_gaTD2qH_tFczGg-0jIna/exec"; 
 
 function onScanSuccess(decodedText) {
   const data = decodedText.split("|");
@@ -50,7 +52,11 @@ function onScanSuccess(decodedText) {
   const lop = data[2];
 
   const today = new Date().toISOString().slice(0, 10);
-  const time = new Date().toLocaleTimeString();
+  const now = new Date();
+  const time = now.toLocaleTimeString();
+  const hhmm = now.toTimeString().slice(0, 5);
+  const diTre = checkLate(hhmm);
+
 
   fetch(API_URL, {
     method: "POST",
@@ -59,7 +65,8 @@ function onScanSuccess(decodedText) {
       tenHS: tenHS,
       lop: lop,
       ngay: today,
-      gio: time
+      gio: time,
+      diTre: diTre
     })
   })
   .then(res => res.json())
@@ -75,7 +82,17 @@ function onScanSuccess(decodedText) {
 
   // html5QrCode.stop();
 }
+// Checck xem đi học muộn hay đúng giờ
+  function checkLate(timeStr) {
+  const [h, m] = timeStr.split(":").map(Number);
+  const nowMinutes = h * 60 + m;
 
+  const [sh, sm] = START_TIME.split(":").map(Number);
+  const startMinutes = sh * 60 + sm;
+
+  return nowMinutes > startMinutes ? "Di tre" : "Dung gio";
+}
+  
 // Khởi động camera sau
 const html5QrCode = new Html5Qrcode("reader");
 
@@ -92,4 +109,5 @@ Html5Qrcode.getCameras().then(cameras => {
 
 </body>
 </html>
+
 

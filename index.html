@@ -17,11 +17,59 @@
     #reader {
       max-width: 360px;
       margin: auto;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      overflow: hidden;
     }
     #status {
       margin-top: 15px;
       font-size: 17px;
       font-weight: bold;
+      padding: 10px;
+      border-radius: 5px;
+      min-height: 40px;
+    }
+    .success { background: #d4edda; color: #155724; }
+    .error { background: #f8d7da; color: #721c24; }
+    .warning { background: #fff3cd; color: #856404; }
+    .info { background: #d1ecf1; color: #0c5460; }
+    
+    #scannedList {
+      margin-top: 20px;
+      max-width: 400px;
+      margin-left: auto;
+      margin-right: auto;
+      background: white;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    #scannedList h3 {
+      margin-top: 0;
+      color: #333;
+    }
+    .student-item {
+      padding: 8px;
+      margin: 5px 0;
+      background: #f8f9fa;
+      border-left: 4px solid #28a745;
+      text-align: left;
+      border-radius: 4px;
+    }
+    .student-item.late {
+      border-left-color: #ffc107;
+    }
+    #resetBtn {
+      margin-top: 10px;
+      padding: 8px 16px;
+      background: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #resetBtn:hover {
+      background: #c82333;
     }
   </style>
 </head>
@@ -33,72 +81,140 @@
 <div id="reader"></div>
 <div id="status"></div>
 
-<script>
+<div id="scannedList">
+  <h3>Đã điểm danh: <span id="count">0</span></h3>
+  <div id="listContent"></div>
+  <button id="resetBtn" onclick="resetSession()">Đặt lại phiên</button>
+</div>
+
 <script>
 const START_TIME = "07:00";
 const API_URL = "https://script.google.com/macros/s/AKfycbxnk0mA-PcUTBtYRmI0adC9ZEqaNnkgiGOT1Oy5hMPE2_ibWrp3B5OWV4t8Kv5HJTrT/exec"; 
 
-function getTodayKey() {
-  return "attendance_" + new Date().toISOString().slice(0, 10);
+let html5QrCode;
+let scannedStudents = new Set(); // Lưu mã học sinh đã quét trong phiên
+let isProcessing = false; // Ngăn quét quá nhanh
+
+// Âm thanh
+function playBeep(success = true) {
+  const url = success 
+    ? "https://actions.google.com/sounds/v1/alarms/beep_short.ogg"
+    : "https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg";
+  const audio = new Audio(url);
+  audio.play().catch(e => console.log("Audio play failed:", e));
 }
 
-// kiểm tra đã quét hôm nay chưa
-function hasScannedToday(maHS) {
-  const data = JSON.parse(localStorage.getItem(getTodayKey()) || "[]");
-  return data.includes(maHS);
+// Hiển thị trạng thái
+function showStatus(message, type = 'success', duration = 3000) {
+  const status = document.getElementById("status");
+  status.innerText = message;
+  status.className = type;
+  
+  // Tự động xóa sau duration
+  if (duration > 0) {
+    setTimeout(() => {
+      status.innerText = "";
+      status.className = "";
+    }, duration);
+  }
 }
 
-// lưu mã đã quét
-function saveScanned(maHS) {
-  const key = getTodayKey();
-  const data = JSON.parse(localStorage.getItem(key) || "[]");
-  data.push(maHS);
-  localStorage.setItem(key, JSON.stringify(data));
-}
-
-// âm thanh beep
-function playBeep() {
-  const audio = new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
-  audio.play();
-}
-
-// kiểm tra đi trễ
-function checkLate(timeStr) {
-  const [h, m] = timeStr.split(":").map(Number);
+// Kiểm tra đi trễ
+function checkLate(hhmm) {
+  const [h, m] = hhmm.split(":").map(Number);
   const nowMinutes = h * 60 + m;
 
   const [sh, sm] = START_TIME.split(":").map(Number);
   const startMinutes = sh * 60 + sm;
 
-  return nowMinutes > startMinutes ? "Đi trễ" : "Đúng giờ";
+  return nowMinutes > startMinutes;
 }
 
-function onScanSuccess(decodedText) {
-  const data = decodedText.split("|");
-  const status = document.getElementById("status");
-
-  if (data.length < 3) {
-    status.innerText = "❌ Mã QR không hợp lệ";
-    return;
-  }
-
-  const maHS = data[0];
-  const tenHS = data[1];
-  const lop = data[2];
-
-  if (hasScannedToday(maHS)) {
-    status.innerText = "⚠️ " + tenHS + " đã điểm danh hôm nay";
-    return;
-  }
-
-  const today = new Date().toISOString().slice(0, 10);
+// Cập nhật danh sách đã quét
+function updateScannedList(maHS, tenHS, lop, isLate) {
+  const count = document.getElementById("count");
+  const listContent = document.getElementById("listContent");
+  
+  count.innerText = scannedStudents.size;
+  
   const now = new Date();
-  const time = now.toLocaleTimeString();
-  const hhmm = now.toTimeString().slice(0, 5);
-  const diTre = checkLate(hhmm);
+  const time = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  
+  const item = document.createElement('div');
+  item.className = `student-item ${isLate ? 'late' : ''}`;
+  item.innerHTML = `
+    <strong>${tenHS}</strong> (${maHS})<br>
+    <small>Lớp: ${lop} | ${time} ${isLate ? '⚠️ Trễ' : '✓ Đúng giờ'}</small>
+  `;
+  
+  // Thêm vào đầu danh sách
+  listContent.insertBefore(item, listContent.firstChild);
+}
 
+// Đặt lại phiên làm việc
+function resetSession() {
+  if (confirm("Bạn có chắc muốn xóa danh sách điểm danh hiện tại?")) {
+    scannedStudents.clear();
+    document.getElementById("count").innerText = "0";
+    document.getElementById("listContent").innerHTML = "";
+    showStatus("🔄 Đã đặt lại phiên làm việc", 'info', 2000);
+  }
+}
+
+// Xử lý quét QR
+function onScanSuccess(decodedText) {
+  // Ngăn quét quá nhanh (debounce 500ms)
+  if (isProcessing) {
+    return;
+  }
+  
+  isProcessing = true;
+  setTimeout(() => { isProcessing = false; }, 500);
+  
+  const data = decodedText.split("|");
+  
+  // Validate format
+  if (data.length < 3) {
+    playBeep(false);
+    showStatus("❌ Mã QR không hợp lệ!", 'error');
+    return;
+  }
+
+  const maHS = data,[object Object],trim();
+  const tenHS = data,[object Object],trim();
+  const lop = data,[object Object],trim();
+
+  // Validate dữ liệu
+  if (!maHS || !tenHS || !lop) {
+    playBeep(false);
+    showStatus("❌ Thông tin QR không đầy đủ!", 'error');
+    return;
+  }
+
+  // ✅ KIỂM TRA QUÉT LẶP TRONG PHIÊN
+  if (scannedStudents.has(maHS)) {
+    playBeep(false);
+    showStatus(`⚠️ ${tenHS} đã được quét rồi!`, 'warning', 2000);
+    return;
+  }
+
+  // Hiển thị đang xử lý
+  showStatus("⏳ Đang xử lý...", 'info', 0);
+
+  // Lấy thời gian hiện tại
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const time = now.toLocaleTimeString('vi-VN');
+  const hhmm = now.toTimeString().slice(0, 5);
+  const isLate = checkLate(hhmm);
+  const diTre = isLate ? "Đi trễ" : "Đúng giờ";
+
+  // Gửi lên server
   fetch(API_URL, {
     method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
     body: JSON.stringify({
       maHS,
       tenHS,
@@ -111,30 +227,81 @@ function onScanSuccess(decodedText) {
   .then(res => res.json())
   .then(result => {
     if (result.status === "exists") {
-      status.innerText = "⚠️ Học sinh đã điểm danh hôm nay";
+      // Học sinh đã điểm danh từ thiết bị khác hoặc lần trước
+      playBeep(false);
+      showStatus(`⚠️ ${tenHS} đã điểm danh hôm nay rồi!`, 'warning');
+    } else if (result.status === "success") {
+      // Thành công
+      scannedStudents.add(maHS);
+      playBeep(true);
+      showStatus(`✅ ${tenHS} - ${diTre}`, 'success');
+      updateScannedList(maHS, tenHS, lop, isLate);
     } else {
-      saveScanned(maHS);
-      playBeep();
-      status.innerText = "✅ Điểm danh thành công: " + tenHS + " (" + diTre + ")";
+      // Lỗi khác
+      playBeep(false);
+      showStatus("❌ Lỗi không xác định!", 'error');
     }
+  })
+  .catch(error => {
+    console.error("Error:", error);
+    playBeep(false);
+    showStatus("❌ Lỗi kết nối! Kiểm tra mạng.", 'error');
   });
 }
 
-// khởi động camera
-const html5QrCode = new Html5Qrcode("reader");
+// Xử lý lỗi quét (không hiển thị để tránh spam)
+function onScanError(errorMessage) {
+  // Silent error handling
+}
 
-Html5Qrcode.getCameras().then(cameras => {
-  if (cameras.length) {
-    html5QrCode.start(
-      { facingMode: "environment" },
-      { fps: 10, qrbox: 250 },
-      onScanSuccess
-    );
+// Khởi động camera
+function startCamera() {
+  html5QrCode = new Html5Qrcode("reader");
+
+  Html5Qrcode.getCameras()
+    .then(cameras => {
+      if (cameras && cameras.length > 0) {
+        // Ưu tiên camera sau
+        const cameraId = cameras.length > 1 ? cameras,[object Object],id : cameras,[object Object],id;
+        
+        html5QrCode.start(
+          cameraId,
+          {
+            fps: 10,
+            qrbox: { width: 250, height: 250 },
+            aspectRatio: 1.0
+          },
+          onScanSuccess,
+          onScanError
+        )
+        .then(() => {
+          console.log("✅ Camera started successfully");
+          showStatus("📷 Camera đã sẵn sàng", 'info', 2000);
+        })
+        .catch(err => {
+          console.error("Unable to start camera:", err);
+          showStatus("❌ Không thể khởi động camera", 'error', 0);
+        });
+      } else {
+        showStatus("❌ Không tìm thấy camera!", 'error', 0);
+      }
+    })
+    .catch(err => {
+      console.error("Error getting cameras:", err);
+      showStatus("❌ Lỗi truy cập camera", 'error', 0);
+    });
+}
+
+// Khởi động khi trang load
+window.addEventListener('load', startCamera);
+
+// Dọn dẹp khi đóng trang
+window.addEventListener('beforeunload', () => {
+  if (html5QrCode) {
+    html5QrCode.stop().catch(e => console.log(e));
   }
 });
 </script>
 
-
 </body>
 </html>
-

@@ -1,3 +1,39 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Điểm danh QR</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
+  <style>
+    body {
+      font-family: Arial;
+      text-align: center;
+      background: #f2f4f7;
+      padding: 20px;
+    }
+    #reader {
+      max-width: 360px;
+      margin: auto;
+    }
+    #status {
+      margin-top: 15px;
+      font-size: 17px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+<h2>ĐIỂM DANH HỌC SINH BẰNG QR</h2>
+<p>Giáo viên quét mã QR học sinh</p>
+
+<div id="reader"></div>
+<div id="status"></div>
+
+<script>
 <script>
 const START_TIME = "07:00";
 const API_URL = "https://script.google.com/macros/s/AKfycbxnk0mA-PcUTBtYRmI0adC9ZEqaNnkgiGOT1Oy5hMPE2_ibWrp3B5OWV4t8Kv5HJTrT/exec"; 
@@ -97,3 +133,8 @@ Html5Qrcode.getCameras().then(cameras => {
   }
 });
 </script>
+
+
+</body>
+</html>
+
